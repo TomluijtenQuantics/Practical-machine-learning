@@ -1,0 +1,109 @@
+---
+title: "Quantification of barbell lifts"
+author: "T Luijten"
+date: "2 november 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T)
+```
+
+## Introduction
+In this assignment, a study is done which quantifies barbell lifts. This study is part of a larger study which quantifies various kinds of personal activities. For this, devices like Jawbone Up, Nike FuelBand, and Fitbit are used. These devices collect a large amount of data which can be used to quantify activities.  
+
+## Clear the workspace
+Here, the workspace will be cleared 
+```{r clear,warning = FALSE}
+rm(list = ls())
+```
+
+## Preprocessing
+###Import the packages and data
+First of all, the packages and data required in the following analysis will be loaded.
+```{r importdata,warning = FALSE,message=FALSE}
+library(caret)
+library(randomForest)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+
+set.seed(1)
+
+traindata <- read.csv("C:/Coursera/DataScience/DataScience/Machine Learning/Project/pml-training.csv",na.strings=c("NA","#DIV/0!", ""))
+valdata <- read.csv("C:/Coursera/DataScience/DataScience/Machine Learning/Project/pml-testing.csv",na.strings=c("NA","#DIV/0!", ""))
+
+```
+
+###Data cleaning
+Next, we clean the columns that are redundant for the analysis. 
+```{r cleandata,warning = FALSE}
+
+##Delete the columns with na's
+isnotnacol <- (colSums(is.na(traindata)) == 0)
+traindata <- traindata[,isnotnacol]
+
+##Delete column 1 till 7
+traindata <- traindata[,-(1:7)]
+
+##Delete the variables that have low variance
+traindata <- traindata[,!nearZeroVar(traindata,saveMetrics = T)$nzv]
+```
+After processing the data, the training set consists of 19622 observations and 53 relevant variables. The test set consists of 20 observations and 53 relevant variables. One of these variables is the outcome which is called "classe".
+
+###Accuracy matrix
+In the code below, the "Accuracy" matrix is created which is used quantify the accuracy of each method.
+```{r preprocessing2,warning = FALSE}
+Accuracy <- matrix(nrow = 3, ncol = 3)
+colnames(Accuracy) <-  c("rpart","rf","gbm")
+```
+
+##Machine learning algorithms
+Below, the machine learning algorithms used to predict "classe" based on the training data are created and compared. In order to do this, 3-fold cross validation is done and each algorithm is applied to each partition. In the end, the accuracy for every algorithm is calculated taking the average of the accuracy over the partitions.
+
+The algorithms used are classification trees, random forests, and the combination of these predictors. 
+```{r analysis, warning = FALSE}
+folds <- createFolds(traindata$classe,k=3,list=T, returnTrain = F)
+
+for(i in 1:3) {
+
+train <- traindata[-folds[[i]],]
+test <- traindata[folds[[i]],]
+
+#Classification trees
+model_rpart <- rpart(classe ~ ., data=train, method="class")
+pred_rpart <- predict(model_rpart,test,type = "class")
+Accuracy[i,1] <- confusionMatrix(test$classe, pred_rpart)$overall[1]
+if (i == 3) {
+  showmatrix1 <- confusionMatrix(test$classe, pred_rpart)
+}
+
+
+#Random forests
+model_rf <- randomForest(classe ~ ., data = train)
+pred_rf <- predict(model_rf,test,type = "class")
+Accuracy[i,2] <- confusionMatrix(test$classe, pred_rf)$overall[1]
+if (i == 3) {
+  showmatrix2 <- confusionMatrix(test$classe, pred_rf)
+}
+
+#Combined
+data_comb <- data.frame(pred_rpart,pred_rf,test$classe)
+model_comb <- train(test.classe~., data_comb,method="gam")
+pred_comb <- predict(model_comb,data_comb)
+Accuracy[i,3] <- confusionMatrix(test$classe, pred_comb)$overall[1]
+}
+showmatrix1
+rpart.plot(model_rpart,fallen.leaves=FALSE,tweak=1.3)
+showmatrix2
+plot(model_rf, log="y")
+colMeans(Accuracy)
+```
+From the Accuracy matrix, we can conclude that random forest is the best method with an out-of-sample rate equal to 0.006 (1-0.9943939).
+
+##Prediction for valdata
+Lastly, we will provide a prediction for the validation data, called valdata.
+```{r prediction, warning = FALSE}
+val_classe <- predict(model_rf,valdata[,which(names(valdata) %in% names(traindata))])
+val_classe
+```
